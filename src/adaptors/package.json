@@ -21,7 +21,7 @@
     "graphql": "^15.5.1",
     "graphql-request": "^3.5.0",
     "limiter": "^2.1.0",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "node-fetch": "^2.6.1",
     "superagent": "^10.2.2",
     "web3": "^4.0.1"
