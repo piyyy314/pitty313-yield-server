@@ -33,7 +33,7 @@
     "ioredis": "^5.3.2",
     "lambert-w-function": "^3.0.0",
     "limiter": "^2.1.0",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "morgan": "^1.10.1",
     "node-fetch": "^2.6.1",
     "pg-promise": "^11.5.5",
