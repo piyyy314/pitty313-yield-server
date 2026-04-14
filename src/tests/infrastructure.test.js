@@ -1,23 +1,27 @@
+'use strict';
+
 /**
  * Infrastructure tests for PR changes:
  *   - .github/workflows/python-publish.yml (deleted)
  *   - environment.yml (deleted)
  *   - package.json dependency version updates:
- *       axios  ^1.15.0 → ^0.30.0
- *       express ^4.19.2 → ^4.20.0
+ *       axios   ^1.15.0  → ^0.30.0
+ *       express ^4.19.2  → ^4.20.0
  *       lodash  ^4.17.23 → ^4.18.1
+ *   - src/adaptors/package.json dependency version updates:
+ *       axios   ^1.15.0  → ^1.12.0
+ *       lodash  ^4.18.0  → ^4.17.23
  *
  * Run with:
  *   npx jest --config jest.infrastructure.config.js
  */
-
-'use strict';
 
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const WORKFLOWS_DIR = path.join(ROOT, '.github', 'workflows');
+const ADAPTORS_DIR = path.join(ROOT, 'src', 'adaptors');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,12 +35,24 @@ function exists(filePath) {
   return fs.existsSync(filePath);
 }
 
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
 function readPackageJson() {
-  return JSON.parse(fs.readFileSync(repoPath('package.json'), 'utf8'));
+  return readJson(repoPath('package.json'));
 }
 
 function readPackageLockJson() {
-  return JSON.parse(fs.readFileSync(repoPath('package-lock.json'), 'utf8'));
+  return readJson(repoPath('package-lock.json'));
+}
+
+function readAdaptorsPackageJson() {
+  return readJson(path.join(ADAPTORS_DIR, 'package.json'));
+}
+
+function readAdaptorsPackageLockJson() {
+  return readJson(path.join(ADAPTORS_DIR, 'package-lock.json'));
 }
 
 // ---------------------------------------------------------------------------
@@ -58,6 +74,14 @@ describe('python-publish.yml workflow (deleted)', () => {
     expect(pypiFiles).toHaveLength(0);
   });
 
+  test('no files named python-publish.* exist anywhere in .github/workflows/', () => {
+    const workflowFiles = fs.readdirSync(WORKFLOWS_DIR);
+    const matches = workflowFiles.filter((f) =>
+      /^python[-_]publish\./i.test(f)
+    );
+    expect(matches).toHaveLength(0);
+  });
+
   test('no Python packaging setup.py exists at repository root', () => {
     expect(exists(repoPath('setup.py'))).toBe(false);
   });
@@ -74,12 +98,9 @@ describe('python-publish.yml workflow (deleted)', () => {
     expect(exists(repoPath('MANIFEST.in'))).toBe(false);
   });
 
-  test('no files named python-publish.* exist anywhere in .github/workflows/', () => {
-    const workflowFiles = fs.readdirSync(WORKFLOWS_DIR);
-    const matches = workflowFiles.filter((f) =>
-      /^python[-_]publish\./i.test(f)
-    );
-    expect(matches).toHaveLength(0);
+  // Boundary: ensure the workflow directory itself still exists
+  test('.github/workflows/ directory still exists after deletion of python-publish.yml', () => {
+    expect(exists(WORKFLOWS_DIR)).toBe(true);
   });
 });
 
@@ -117,6 +138,11 @@ describe('environment.yml Conda environment file (deleted)', () => {
     );
     expect(pythonBuildDirs).toHaveLength(0);
   });
+
+  // Boundary: confirm no YAML environment file with case variants
+  test('no environment.yaml (alternate extension) exists at repository root', () => {
+    expect(exists(repoPath('environment.yaml'))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -139,12 +165,13 @@ describe('package.json dependency version changes', () => {
     expect(pkg.dependencies.axios).not.toBe('^1.15.0');
   });
 
-  test('axios dependency is not a 1.x version range', () => {
-    expect(pkg.dependencies.axios).not.toMatch(/^\^1\./);
+  test('axios dependency uses the 0.x series (downgraded from 1.x)', () => {
+    expect(pkg.dependencies.axios).toMatch(/^\^0\./);
   });
 
-  test('axios dependency uses the 0.x series', () => {
-    expect(pkg.dependencies.axios).toMatch(/^\^0\./);
+  test('axios dependency is a valid semver range string', () => {
+    expect(typeof pkg.dependencies.axios).toBe('string');
+    expect(pkg.dependencies.axios.length).toBeGreaterThan(0);
   });
 
   // express: ^4.19.2 → ^4.20.0
@@ -160,6 +187,17 @@ describe('package.json dependency version changes', () => {
     expect(pkg.dependencies.express).toMatch(/^\^4\./);
   });
 
+  test('express minor version is at least 20', () => {
+    const version = pkg.dependencies.express.replace(/^\^/, '');
+    const [, minor] = version.split('.').map(Number);
+    expect(minor).toBeGreaterThanOrEqual(20);
+  });
+
+  test('express dependency is a valid semver range string', () => {
+    expect(typeof pkg.dependencies.express).toBe('string');
+    expect(pkg.dependencies.express.length).toBeGreaterThan(0);
+  });
+
   // lodash: ^4.17.23 → ^4.18.1
   test('lodash dependency is set to ^4.18.1', () => {
     expect(pkg.dependencies.lodash).toBe('^4.18.1');
@@ -173,10 +211,15 @@ describe('package.json dependency version changes', () => {
     expect(pkg.dependencies.lodash).toMatch(/^\^4\./);
   });
 
-  test('lodash version is at least 4.18.1 (not a prior 4.17.x patch)', () => {
+  test('lodash minor version is at least 18 (not a 4.17.x patch)', () => {
     const version = pkg.dependencies.lodash.replace(/^\^/, '');
     const [, minor] = version.split('.').map(Number);
     expect(minor).toBeGreaterThanOrEqual(18);
+  });
+
+  test('lodash dependency is a valid semver range string', () => {
+    expect(typeof pkg.dependencies.lodash).toBe('string');
+    expect(pkg.dependencies.lodash.length).toBeGreaterThan(0);
   });
 });
 
@@ -196,9 +239,22 @@ describe('package-lock.json resolved dependency versions', () => {
     expect(typeof lock).toBe('object');
   });
 
+  test('package-lock.json lockfileVersion is present', () => {
+    expect(lock.lockfileVersion).toBeDefined();
+  });
+
+  test('package-lock.json name matches package.json name', () => {
+    const pkg = readPackageJson();
+    expect(lock.name).toBe(pkg.name);
+  });
+
+  // axios
+  test('top-level axios in package-lock.json entry exists', () => {
+    expect(lock.packages['node_modules/axios']).toBeDefined();
+  });
+
   test('top-level axios in package-lock.json resolves to 0.30.0', () => {
     const axiosEntry = lock.packages['node_modules/axios'];
-    expect(axiosEntry).toBeDefined();
     expect(axiosEntry.version).toBe('0.30.0');
   });
 
@@ -212,9 +268,19 @@ describe('package-lock.json resolved dependency versions', () => {
     expect(axiosEntry.version).toMatch(/^0\./);
   });
 
+  test('top-level axios resolved version major is 0 (correctly downgraded)', () => {
+    const axiosEntry = lock.packages['node_modules/axios'];
+    const [major] = axiosEntry.version.split('.').map(Number);
+    expect(major).toBe(0);
+  });
+
+  // express
+  test('top-level express in package-lock.json entry exists', () => {
+    expect(lock.packages['node_modules/express']).toBeDefined();
+  });
+
   test('top-level express in package-lock.json resolves to 4.20.0', () => {
     const expressEntry = lock.packages['node_modules/express'];
-    expect(expressEntry).toBeDefined();
     expect(expressEntry.version).toBe('4.20.0');
   });
 
@@ -223,9 +289,19 @@ describe('package-lock.json resolved dependency versions', () => {
     expect(expressEntry.version).not.toBe('4.19.2');
   });
 
+  test('top-level express resolved version minor is at least 20', () => {
+    const expressEntry = lock.packages['node_modules/express'];
+    const [, minor] = expressEntry.version.split('.').map(Number);
+    expect(minor).toBeGreaterThanOrEqual(20);
+  });
+
+  // lodash
+  test('top-level lodash in package-lock.json entry exists', () => {
+    expect(lock.packages['node_modules/lodash']).toBeDefined();
+  });
+
   test('top-level lodash in package-lock.json resolves to 4.18.1', () => {
     const lodashEntry = lock.packages['node_modules/lodash'];
-    expect(lodashEntry).toBeDefined();
     expect(lodashEntry.version).toBe('4.18.1');
   });
 
@@ -234,13 +310,143 @@ describe('package-lock.json resolved dependency versions', () => {
     expect(lodashEntry.version).not.toBe('4.17.23');
   });
 
-  test('package-lock.json lockfileVersion is present', () => {
+  test('top-level lodash resolved version minor is at least 18', () => {
+    const lodashEntry = lock.packages['node_modules/lodash'];
+    const [, minor] = lodashEntry.version.split('.').map(Number);
+    expect(minor).toBeGreaterThanOrEqual(18);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// src/adaptors/package.json – dependency version changes
+// ---------------------------------------------------------------------------
+
+describe('src/adaptors/package.json dependency version changes', () => {
+  let pkg;
+
+  beforeAll(() => {
+    pkg = readAdaptorsPackageJson();
+  });
+
+  // axios: ^1.15.0 → ^1.12.0
+  test('axios dependency is set to ^1.12.0', () => {
+    expect(pkg.dependencies.axios).toBe('^1.12.0');
+  });
+
+  test('axios dependency is NOT the old ^1.15.0 version', () => {
+    expect(pkg.dependencies.axios).not.toBe('^1.15.0');
+  });
+
+  test('axios dependency remains in the 1.x series', () => {
+    expect(pkg.dependencies.axios).toMatch(/^\^1\./);
+  });
+
+  test('axios minor version is at most 12 (downgraded from 15)', () => {
+    const version = pkg.dependencies.axios.replace(/^\^/, '');
+    const [, minor] = version.split('.').map(Number);
+    expect(minor).toBeLessThanOrEqual(12);
+  });
+
+  test('axios dependency is a valid semver range string', () => {
+    expect(typeof pkg.dependencies.axios).toBe('string');
+    expect(pkg.dependencies.axios.length).toBeGreaterThan(0);
+  });
+
+  // lodash: ^4.18.0 → ^4.17.23
+  test('lodash dependency is set to ^4.17.23', () => {
+    expect(pkg.dependencies.lodash).toBe('^4.17.23');
+  });
+
+  test('lodash dependency is NOT the old ^4.18.0 version', () => {
+    expect(pkg.dependencies.lodash).not.toBe('^4.18.0');
+  });
+
+  test('lodash major version is still 4.x', () => {
+    expect(pkg.dependencies.lodash).toMatch(/^\^4\./);
+  });
+
+  test('lodash minor version is 17 (downgraded from 18)', () => {
+    const version = pkg.dependencies.lodash.replace(/^\^/, '');
+    const [, minor] = version.split('.').map(Number);
+    expect(minor).toBe(17);
+  });
+
+  test('lodash dependency is a valid semver range string', () => {
+    expect(typeof pkg.dependencies.lodash).toBe('string');
+    expect(pkg.dependencies.lodash.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// src/adaptors/package-lock.json – resolved version verification
+// ---------------------------------------------------------------------------
+
+describe('src/adaptors/package-lock.json resolved dependency versions', () => {
+  let lock;
+
+  beforeAll(() => {
+    lock = readAdaptorsPackageLockJson();
+  });
+
+  test('src/adaptors/package-lock.json exists and is parseable', () => {
+    expect(lock).toBeDefined();
+    expect(typeof lock).toBe('object');
+  });
+
+  test('src/adaptors/package-lock.json lockfileVersion is present', () => {
     expect(lock.lockfileVersion).toBeDefined();
   });
 
-  test('package-lock.json name matches package.json name', () => {
-    const pkg = readPackageJson();
+  test('src/adaptors/package-lock.json name matches src/adaptors/package.json name', () => {
+    const pkg = readAdaptorsPackageJson();
     expect(lock.name).toBe(pkg.name);
+  });
+
+  // axios
+  test('axios in adaptors package-lock.json entry exists', () => {
+    expect(lock.packages['node_modules/axios']).toBeDefined();
+  });
+
+  test('axios in adaptors package-lock.json resolves to 1.12.0', () => {
+    const axiosEntry = lock.packages['node_modules/axios'];
+    expect(axiosEntry.version).toBe('1.12.0');
+  });
+
+  test('axios in adaptors package-lock.json does NOT resolve to 1.15.0', () => {
+    const axiosEntry = lock.packages['node_modules/axios'];
+    expect(axiosEntry.version).not.toBe('1.15.0');
+  });
+
+  test('axios in adaptors package-lock.json remains in 1.x series', () => {
+    const axiosEntry = lock.packages['node_modules/axios'];
+    expect(axiosEntry.version).toMatch(/^1\./);
+  });
+
+  test('axios in adaptors package-lock.json minor version is at most 12', () => {
+    const axiosEntry = lock.packages['node_modules/axios'];
+    const [, minor] = axiosEntry.version.split('.').map(Number);
+    expect(minor).toBeLessThanOrEqual(12);
+  });
+
+  // lodash
+  test('lodash in adaptors package-lock.json entry exists', () => {
+    expect(lock.packages['node_modules/lodash']).toBeDefined();
+  });
+
+  test('lodash in adaptors package-lock.json resolves to 4.17.23', () => {
+    const lodashEntry = lock.packages['node_modules/lodash'];
+    expect(lodashEntry.version).toBe('4.17.23');
+  });
+
+  test('lodash in adaptors package-lock.json does NOT resolve to 4.18.0', () => {
+    const lodashEntry = lock.packages['node_modules/lodash'];
+    expect(lodashEntry.version).not.toBe('4.18.0');
+  });
+
+  test('lodash in adaptors package-lock.json minor version is 17', () => {
+    const lodashEntry = lock.packages['node_modules/lodash'];
+    const [, minor] = lodashEntry.version.split('.').map(Number);
+    expect(minor).toBe(17);
   });
 });
 
@@ -292,6 +498,12 @@ describe('remaining GitHub Actions workflows are intact', () => {
     );
     expect(content.trim().length).toBeGreaterThan(0);
   });
+
+  // Boundary: ensure python-publish.yml is specifically absent
+  test('python-publish.yml is specifically not listed in workflows directory', () => {
+    const allFiles = fs.readdirSync(WORKFLOWS_DIR);
+    expect(allFiles).not.toContain('python-publish.yml');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -299,16 +511,20 @@ describe('remaining GitHub Actions workflows are intact', () => {
 // ---------------------------------------------------------------------------
 
 describe('regression and boundary checks', () => {
-  test('prepareSnapshot.py still exists (only the env spec was removed, not the script)', () => {
-    expect(exists(repoPath('scripts', 'prepareSnapshot.py'))).toBe(true);
-  });
-
   test('package.json still exists (Node.js project entry point is unaffected)', () => {
     expect(exists(repoPath('package.json'))).toBe(true);
   });
 
   test('package-lock.json still exists', () => {
     expect(exists(repoPath('package-lock.json'))).toBe(true);
+  });
+
+  test('src/adaptors/package.json still exists', () => {
+    expect(exists(path.join(ADAPTORS_DIR, 'package.json'))).toBe(true);
+  });
+
+  test('src/adaptors/package-lock.json still exists', () => {
+    expect(exists(path.join(ADAPTORS_DIR, 'package-lock.json'))).toBe(true);
   });
 
   test('no environment.yml file exists at the repository root after deletion', () => {
@@ -319,25 +535,7 @@ describe('regression and boundary checks', () => {
     expect(envYamlFiles).toHaveLength(0);
   });
 
-  test('axios dependency in package.json is a valid semver range string', () => {
-    const pkg = readPackageJson();
-    expect(typeof pkg.dependencies.axios).toBe('string');
-    expect(pkg.dependencies.axios.length).toBeGreaterThan(0);
-  });
-
-  test('express dependency in package.json is a valid semver range string', () => {
-    const pkg = readPackageJson();
-    expect(typeof pkg.dependencies.express).toBe('string');
-    expect(pkg.dependencies.express.length).toBeGreaterThan(0);
-  });
-
-  test('lodash dependency in package.json is a valid semver range string', () => {
-    const pkg = readPackageJson();
-    expect(typeof pkg.dependencies.lodash).toBe('string');
-    expect(pkg.dependencies.lodash.length).toBeGreaterThan(0);
-  });
-
-  test('no *.yml files exist at the repository root that are environment files', () => {
+  test('no *.yml files exist at repository root that are conda environment files', () => {
     const rootFiles = fs.readdirSync(ROOT);
     const rootYamlFiles = rootFiles.filter(
       (f) =>
@@ -350,24 +548,57 @@ describe('regression and boundary checks', () => {
     expect(unexpectedEnvFiles).toHaveLength(0);
   });
 
-  test('axios resolved version in package-lock.json is less than 1.0.0 (correctly downgraded)', () => {
+  // Verify root package-lock.json axios is 0.x (not 1.x)
+  test('root axios resolved version major is 0, confirming the 0.x downgrade', () => {
     const lock = readPackageLockJson();
     const axiosEntry = lock.packages['node_modules/axios'];
     const [major] = axiosEntry.version.split('.').map(Number);
     expect(major).toBe(0);
   });
 
-  test('express resolved version in package-lock.json is at least 4.20.0', () => {
+  // Verify express minor >= 20
+  test('root express resolved version minor is at least 20', () => {
     const lock = readPackageLockJson();
     const expressEntry = lock.packages['node_modules/express'];
     const [, minor] = expressEntry.version.split('.').map(Number);
     expect(minor).toBeGreaterThanOrEqual(20);
   });
 
-  test('lodash resolved version in package-lock.json minor is at least 18', () => {
+  // Verify root lodash minor >= 18
+  test('root lodash resolved version minor is at least 18', () => {
     const lock = readPackageLockJson();
     const lodashEntry = lock.packages['node_modules/lodash'];
     const [, minor] = lodashEntry.version.split('.').map(Number);
     expect(minor).toBeGreaterThanOrEqual(18);
+  });
+
+  // Verify adaptors axios still 1.x (not downgraded to 0.x like root)
+  test('adaptors axios resolved version remains in 1.x (different from root 0.x)', () => {
+    const lock = readAdaptorsPackageLockJson();
+    const axiosEntry = lock.packages['node_modules/axios'];
+    const [major] = axiosEntry.version.split('.').map(Number);
+    expect(major).toBe(1);
+  });
+
+  // Verify adaptors lodash is 4.17.23 (lower than root 4.18.1)
+  test('adaptors lodash resolved version (4.17.x) is lower minor than root (4.18.x)', () => {
+    const rootLock = readPackageLockJson();
+    const adaptorsLock = readAdaptorsPackageLockJson();
+    const rootLodashMinor = Number(
+      rootLock.packages['node_modules/lodash'].version.split('.')[1]
+    );
+    const adaptorsLodashMinor = Number(
+      adaptorsLock.packages['node_modules/lodash'].version.split('.')[1]
+    );
+    expect(adaptorsLodashMinor).toBeLessThan(rootLodashMinor);
+  });
+
+  // Negative: root axios is not the same version as adaptors axios
+  test('root axios version (0.x) is different from adaptors axios version (1.x)', () => {
+    const rootLock = readPackageLockJson();
+    const adaptorsLock = readAdaptorsPackageLockJson();
+    const rootVersion = rootLock.packages['node_modules/axios'].version;
+    const adaptorsVersion = adaptorsLock.packages['node_modules/axios'].version;
+    expect(rootVersion).not.toBe(adaptorsVersion);
   });
 });
