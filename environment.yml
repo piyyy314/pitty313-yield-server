@@ -1,5 +1,10 @@
+name: pitty313-yield-server
+channels:
+  - conda-forge
+  - defaults
 dependencies:
   - python=3.10
+  - pip
   - numpy
   - pandas
   - flake8
