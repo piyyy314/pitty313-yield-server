@@ -3,7 +3,8 @@
 /**
  * Infrastructure tests for PR changes:
  *   - .github/workflows/python-publish.yml (deleted)
- *   - environment.yml (deleted)
+ *   - environment.yml (restored for conda CI workflow)
+ *   - .github/workflows/python-package-conda.yml (added)
  *   - package.json dependency version updates:
  *       axios   ^1.15.0  → ^0.30.0
  *       express ^4.19.2  → ^4.20.0
@@ -105,22 +106,21 @@ describe('python-publish.yml workflow (deleted)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// environment.yml – deletion verification
+// environment.yml – presence verification (restored for conda CI workflow)
 // ---------------------------------------------------------------------------
 
-describe('environment.yml Conda environment file (deleted)', () => {
+describe('environment.yml Conda environment file', () => {
   const envYml = repoPath('environment.yml');
 
-  test('environment.yml must not exist at the repository root', () => {
-    expect(exists(envYml)).toBe(false);
+  test('environment.yml exists at the repository root', () => {
+    expect(exists(envYml)).toBe(true);
   });
 
-  test('no environment*.yml Conda files exist at the repository root', () => {
-    const rootFiles = fs.readdirSync(ROOT);
-    const condaEnvFiles = rootFiles.filter((f) =>
-      /^environment.*\.ya?ml$/i.test(f)
-    );
-    expect(condaEnvFiles).toHaveLength(0);
+  test('environment.yml contains required conda dependencies', () => {
+    const content = fs.readFileSync(envYml, 'utf8');
+    expect(content).toMatch(/python/);
+    expect(content).toMatch(/flake8/);
+    expect(content).toMatch(/pytest/);
   });
 
   test('no conda .condarc file exists at repository root', () => {
@@ -139,7 +139,7 @@ describe('environment.yml Conda environment file (deleted)', () => {
     expect(pythonBuildDirs).toHaveLength(0);
   });
 
-  // Boundary: confirm no YAML environment file with case variants
+  // Boundary: confirm no YAML environment file with alternate extension
   test('no environment.yaml (alternate extension) exists at repository root', () => {
     expect(exists(repoPath('environment.yaml'))).toBe(false);
   });
@@ -527,25 +527,25 @@ describe('regression and boundary checks', () => {
     expect(exists(path.join(ADAPTORS_DIR, 'package-lock.json'))).toBe(true);
   });
 
-  test('no environment.yml file exists at the repository root after deletion', () => {
+  test('environment.yml exists at the repository root (restored for conda CI workflow)', () => {
     const rootFiles = fs.readdirSync(ROOT);
     const envYamlFiles = rootFiles.filter(
       (f) => f.toLowerCase() === 'environment.yml'
     );
-    expect(envYamlFiles).toHaveLength(0);
+    expect(envYamlFiles).toHaveLength(1);
   });
 
-  test('no *.yml files exist at repository root that are conda environment files', () => {
+  test('environment.yml at repository root is the conda environment file', () => {
     const rootFiles = fs.readdirSync(ROOT);
     const rootYamlFiles = rootFiles.filter(
       (f) =>
         /\.ya?ml$/i.test(f) &&
         fs.statSync(repoPath(f)).isFile()
     );
-    const unexpectedEnvFiles = rootYamlFiles.filter(
+    const condaEnvFiles = rootYamlFiles.filter(
       (f) => f.toLowerCase() === 'environment.yml'
     );
-    expect(unexpectedEnvFiles).toHaveLength(0);
+    expect(condaEnvFiles).toHaveLength(1);
   });
 
   // Verify root package-lock.json axios is 0.x (not 1.x)
