@@ -123,6 +123,16 @@ describe('environment.yml Conda environment file', () => {
     expect(content).toMatch(/pytest/);
   });
 
+  test('environment.yml has a name field (valid conda env file structure)', () => {
+    const content = fs.readFileSync(envYml, 'utf8');
+    expect(content).toMatch(/^name:/m);
+  });
+
+  test('environment.yml has a channels field (valid conda env file structure)', () => {
+    const content = fs.readFileSync(envYml, 'utf8');
+    expect(content).toMatch(/^channels:/m);
+  });
+
   test('no conda .condarc file exists at repository root', () => {
     expect(exists(repoPath('.condarc'))).toBe(false);
   });
@@ -475,12 +485,16 @@ describe('remaining GitHub Actions workflows are intact', () => {
     expect(exists(repoPath('.github', 'workflows', 'getFileList.js'))).toBe(true);
   });
 
+  test('python-package-conda.yml workflow exists (added for conda CI)', () => {
+    expect(exists(repoPath('.github', 'workflows', 'python-package-conda.yml'))).toBe(true);
+  });
+
   test('only the expected YAML workflow files remain in .github/workflows/', () => {
     const yamlFiles = fs
       .readdirSync(WORKFLOWS_DIR)
       .filter((f) => /\.ya?ml$/i.test(f))
       .sort();
-    expect(yamlFiles).toEqual(['master.yml', 'test.yml']);
+    expect(yamlFiles).toEqual(['master.yml', 'python-package-conda.yml', 'test.yml']);
   });
 
   test('test.yml is a non-empty file', () => {
