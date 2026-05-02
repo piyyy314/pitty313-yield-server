@@ -41,7 +41,7 @@
     "starknet": "^5.0.0",
     "superagent": "^10.2.2",
     "validator": "^13.15.22",
-    "web3": "^4.0.1"
+    "web3": "^1.10.0"
   },
   "devDependencies": {
     "@babel/core": "^7.17.8",
